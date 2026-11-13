@@ -1,4 +1,4 @@
-﻿Imports System.Runtime.InteropServices
+Imports System.Runtime.InteropServices
 Imports System.Diagnostics
 Imports System.IO
 Imports System.Collections.Generic
@@ -1138,7 +1138,15 @@ Public Class Form1
 
         e.Graphics.DrawString(e.SubItem.Text, e.Item.Font, textBrush, rect, cellFormat)
     End Sub
-
+    Private Sub Form1_FormClosing(sender As Object, e As FormClosingEventArgs) Handles Me.FormClosing
+        ' Close any active Identify overlays when the app exits
+        For Each f As Form In identifyForms
+            If f IsNot Nothing AndAlso Not f.IsDisposed Then
+                f.Close()
+            End If
+        Next
+        identifyForms.Clear()
+    End Sub
     Private Sub cboProfiles_DrawItem(sender As Object, e As DrawItemEventArgs) Handles cboProfiles.DrawItem
         If e.Index < 0 Then Return
 
@@ -1320,9 +1328,11 @@ Public Class Form1
 
         ' Apply the change to our newMode object
         If colIndex = 1 Then ' Resolution
-            Dim parts = newText.Split(" x ")
-            newMode.dmPelsWidth = CInt(parts(0))
-            newMode.dmPelsHeight = CInt(parts(1))
+            ' Split only by the letter 'x' and trim any spaces
+            Dim parts = newText.Split("x"c)
+            newMode.dmPelsWidth = CInt(parts(0).Trim())
+            newMode.dmPelsHeight = CInt(parts(1).Trim())
+            newMode.dmFields = DisplayManager.DM_PELSWIDTH Or DisplayManager.DM_PELSHEIGHT
             newMode.dmFields = DisplayManager.DM_PELSWIDTH Or DisplayManager.DM_PELSHEIGHT
         ElseIf colIndex = 2 Then ' Refresh Rate
             newMode.dmDisplayFrequency = CInt(newText.Replace(" Hz", ""))
@@ -1332,8 +1342,22 @@ Public Class Form1
             If newText = "Portrait" Then orient = 1
             If newText = "Landscape (Flipped)" Then orient = 2
             If newText = "Portrait (Flipped)" Then orient = 3
+
             newMode.dmDisplayOrientation = orient
-            newMode.dmFields = DisplayManager.DM_DISPLAYORIENTATION
+
+            ' --- NEW: Swap the Width and Height for Portrait/Flipped modes ---
+            If (orient = 1 Or orient = 3) AndAlso newMode.dmPelsWidth > newMode.dmPelsHeight Then
+                Dim temp As Integer = newMode.dmPelsWidth
+                newMode.dmPelsWidth = newMode.dmPelsHeight
+                newMode.dmPelsHeight = temp
+            ElseIf (orient = 0 Or orient = 2) AndAlso newMode.dmPelsWidth < newMode.dmPelsHeight Then
+                Dim temp As Integer = newMode.dmPelsWidth
+                newMode.dmPelsWidth = newMode.dmPelsHeight
+                newMode.dmPelsHeight = temp
+            End If
+
+            ' Tell Windows we are changing the orientation AND the resolution dimensions
+            newMode.dmFields = DisplayManager.DM_DISPLAYORIENTATION Or DisplayManager.DM_PELSWIDTH Or DisplayManager.DM_PELSHEIGHT
         End If
 
         ' 1. Apply the new settings TEMPORARILY (Flag 0 means do not write to registry)
